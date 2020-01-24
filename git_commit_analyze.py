@@ -110,7 +110,7 @@ def statistics_log(temp_path, git_projects, author):
     all_project_commits = []
     for project in git_projects:
         commits = extract_commits(project.name, project.commit_path, author)
-        # project.word_cloud_path = generate_word_cloud(project.name, [x.message for x in commits], temp_path)
+        project.word_cloud_path = generate_word_cloud(project.name, [x.message for x in commits], temp_path)
         # 统计每个用户的提交
         contributor = {}
         for commit in commits:
