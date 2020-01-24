@@ -1,55 +1,23 @@
-import jieba
-from wordcloud import WordCloud
 import shutil
+from functools import reduce
+import datetime
+
+from models import CommitInfo, ExtractGitProject
+import random
 
 import os
 import subprocess
 
-debug = True
+from word_tags import generate_word_cloud
 
-
-class CommitInfo:
-    name = None
-    author = None
-    date = None
-    branch = None
-    message = None
-    file_changed = 0
-    insertion = 0
-    deletion = 0
-
-    def __init__(self, name=None, author=None, date=None, branch=None, message=None, file_changed=0, insertion=0, deletion=0):
-        self.name = name
-        self.author = author
-        self.date = date
-        self.branch = branch
-        self.message = message
-        self.file_changed = file_changed
-        self.insertion = insertion
-        self.deletion = deletion
-
-
-class ExtractGitProject:
-    git_path = None
-    commit_path = None
-    word_cloud_path = None
-    name = None
-
-    def __init__(self, name, git_path=None, commit_path=None, word_cloud_path=None):
-        self.name = name
-        self.git_path = git_path
-        self.commit_path = commit_path
-        self.word_cloud_path = word_cloud_path
-
-    def __str__(self):
-        print(f'{self.name} {self.git_path} {self.commit_path} {self.word_cloud_path}')
-        return f'{self.name} {self.git_path} {self.commit_path} {self.word_cloud_path}'
+self_author = '_self'
+leisure_contributor = ['打酱油', '默默无闻', '摸鱼']
 
 
 def clone_git_project_then_obtain_info(param):
     root_path = f"{param.get('temp_file_path')}/{param.get('group')}/"
     if os.path.exists(root_path):
-        shutil.rmtree(root_path)
+         shutil.rmtree(root_path)
     if not param.get('git'):
         raise RuntimeError("no git project")
     git_log_path = f"{root_path}/log/"
@@ -61,14 +29,18 @@ def clone_git_project_then_obtain_info(param):
         print(f"start clone {git_project.get('name')}")
         extract_git_project = ExtractGitProject(git_project.get('name'))
         extract_git_project.git_path = git_project_path + '/' + git_project.get('name')
-        subprocess.call(f"git clone {git_project.get('url')} {extract_git_project.git_path}", shell=True)
+        if not os.path.exists(extract_git_project.git_path):
+            subprocess.call(f"git clone {git_project.get('url')} {extract_git_project.git_path}", shell=True)
         extract_git_project.commit_path = git_log_path + '/' + git_project.get('name')
-        subprocess.call(f"""cd {extract_git_project.git_path} && git log --date=format:'%Y-%m-%d %H:%M:%S' --pretty=format:"%an|%ad|%S|%s" --all --shortstat > {extract_git_project.commit_path}""", shell=True)
+        if not os.path.exists(extract_git_project.commit_path):
+            subprocess.call(
+                f"""cd {extract_git_project.git_path} && git log --date=format:'%Y-%m-%d %H:%M:%S' --pretty=format:"%an|%ad|%S|%s" --all --shortstat > {extract_git_project.commit_path}""",
+                shell=True)
         result.append(extract_git_project)
     return result
 
 
-def extract_commits(project_name, file_path):
+def extract_commits(project_name, file_path, author):
     lines = list(open(file_path, encoding='utf-8').readlines())
     commit_info_list = []
     commit_info = None
@@ -80,8 +52,12 @@ def extract_commits(project_name, file_path):
             commit_info = CommitInfo()
             commit_info.name = project_name
             commit_info.author = commit_user_info[0]
-            commit_info.date = commit_user_info[1]
-            commit_info.branch = commit_user_info[2].replace('refs/remotes/origin/', '').replace('refs/heads/', '').replace('refs/tags/', '')
+            if commit_info.author in author:
+                commit_info.author = self_author
+            commit_info.date = datetime.datetime.strptime(commit_user_info[1], "%Y-%m-%d %H:%M:%S")
+            commit_info.branch = commit_user_info[2].replace('refs/remotes/origin/', '').replace('refs/heads/',
+                                                                                                 '').replace(
+                'refs/tags/', '')
             commit_info.message = commit_user_info[3]
         elif 'file changed' in line or 'files changed' in line:
             sp_msg = line.split(',')
@@ -94,19 +70,18 @@ def extract_commits(project_name, file_path):
                 elif 'deletion' in sp:
                     commit_info.deletion = count
     commit_info_list.append(commit_info)
-    # if debug:
-    #     for info in commit_info_list:
-    #         print(f'{info.author} 在 {info.date} 向 {info.branch} 分支修改了 {info.file_changed} 文件，添加了 {info.insertion} 行代码, 删除了 {info.deletion} 行代码')
-    # print(commit_info_list)
     return commit_info_list
 
 
-def statistics_log(temp_path, git_projects):
+def statistics_log(temp_path, git_projects, author):
+    print('********************')
+    print('***    开始统计   ***')
+    print('********************')
     """
     在 2021 中，
 
     你一共参加了 10 个项目，
-    在  102 个分支上
+    在 102 个分支上
     进行了 7000 次提交
 
     新增了 1040000 行代码，删除了 2000000 行
@@ -130,64 +105,74 @@ def statistics_log(temp_path, git_projects):
     :param git_projects:
     :return:
     """
+    project_contributor = {}
+    no_commit_project = []
     all_project_commits = []
     for project in git_projects:
-        commits = extract_commits(project.name, project.commit_path)
-        project.word_cloud_path = generate_word_cloud(project.name, commits, temp_path)
-        all_project_commits.extend(commits)
+        commits = extract_commits(project.name, project.commit_path, author)
+        project.word_cloud_path = generate_word_cloud(project.name, [x.message for x in commits], temp_path)
         # 统计每个用户的提交
-        commitor = {}
+        contributor = {}
         for commit in commits:
-            comit = commitor.get(commit.author)
-            if not comit:
-                comit = []
-            comit.append(commit)
-            commitor[commit.author] = comit
-        print(f'你在 {project.name} 项目中和 {len(commitor)} 个人合作过')
+            contributor_commits = contributor.get(commit.author)
+            if not contributor_commits:
+                contributor_commits = []
+            contributor_commits.append(commit)
+            contributor[commit.author] = contributor_commits
+        project_contributor[project.name] = contributor
+        if self_author in contributor:
+            all_project_commits.extend(commits)
+        else:
+            no_commit_project.append(project.name)
 
-    # print(git_projects)
+    print(f'你一共参与了 {len(git_projects)} 个项目')
+    print(f'其中在 {len(no_commit_project)} 个项目中默默无闻，你是在偷偷学习吗')
+
+    # 在所有分支中找到自己的提交记录
+    all_project_self_commits = list(filter(lambda x: x.author == self_author, all_project_commits))
+    all_project_self_branch = set([x.name + '@' + x.branch for x in all_project_self_commits])
+    print(f'在 {len(all_project_self_branch)} 个分支上\n进行了 {len(all_project_self_commits)} 次提交')
+    files_change_count = reduce(lambda x, y: x + y, map(lambda x: x.file_changed, all_project_self_commits))
+    insertion_count = reduce(lambda x, y: x + y, map(lambda x: x.insertion, all_project_self_commits))
+    deletion_count = reduce(lambda x, y: x + y, map(lambda x: x.deletion, all_project_self_commits))
+    print(f'修改了文件 {files_change_count} 次, 新增了 {insertion_count} 行代码, 删除了 {deletion_count} 行')
+
+    # 获取最喜欢的项目
+    favourite_project = ['unknow', -1]
+    for project_name, contributor in project_contributor.items():
+        self_commits = contributor.get(self_author)
+        if self_commits and favourite_project[1] < len(self_commits):
+            favourite_project[1] = len(self_commits)
+            favourite_project[0] = project_name
+
+    print(f'你对 {favourite_project[0]} 项目情有独钟, 贡献了 {favourite_project[1]} 提交')
+
+    # 获取码率最高的星期
+    week_commit_count = [0, 0, 0, 0, 0, 0, 0]
+    weekend = ('一', '二', '三', '四', '五', '六', '日')
+    for commit in all_project_self_commits:
+        week_commit_count[commit.date.weekday()] = week_commit_count[commit.date.weekday()] + 1
+
+    # 查询最大值的index
+    index = -1
+    count = 0
+    for (i, c) in enumerate(week_commit_count):
+        if c > count:
+            count = c
+            index = i
+    print(f'你在周{weekend[index]}的码率最高')
+    print('\n' * 4)
+
+    for project_name, contributor in project_contributor.items():
+        if self_author not in contributor:
+            print(f'你在 {project_name} 项目中{random.choice(leisure_contributor)}, 其他 {len(contributor)} 个人在勤奋的敲键盘')
+        elif len(contributor) - 1 == 0:
+            print(f'你在 {project_name} 项目中孤军奋战，一定很孤单吧')
+        else:
+            print(f'你在 {project_name} 项目中和其他 {len(contributor) - 1} 个人合作过')
 
 
-def generate_word_cloud(project_name, commits, temp_path):
-    word_cloud_root_path = f"{temp_path}/wordcloud/"
-    if not os.path.exists(word_cloud_root_path):
-        os.mkdir(word_cloud_root_path)
-    str_list = []
-    for commit in commits:
-        if 'Merge branch' in commit.message:
-            continue
-        for msg in list(jieba.cut(commit.message)):
-            str_list.append(msg)
-
-    wc = WordCloud(font_path='Hiragino Sans GB.ttc', background_color="white", width=1000, height=860, margin=2)\
-        .generate(' '.join(str_list))
-    word_cloud_path = f'{temp_path}/wordcloud/{project_name}.png'
-    wc.to_file(word_cloud_path)
-    return word_cloud_path
-
-
-if '__main__' == __name__:
-    param = {
-        'temp_file_path': '/Users/zhangyunan/temp/',
-        'group': 'self',
-        'git': [
-            {
-                'name': 'pearProject',
-                'url': 'git@gitee.com:zyndev/vue-projectManage.git'
-            },
-            {
-                'name': 'devops',
-                'url': 'git@gitee.com:scoding/devops.git'
-            },
-            {
-                'name': 'checkstyle',
-                'url': 'git@gitee.com:zyndev/checkstyle.git'
-            },
-            {
-                'name': 'universe_publish',
-                'url': 'git@gitee.com:zyndev/universe_publish.git'
-            }
-        ]
-    }
+def analyze(param):
     git_projects = clone_git_project_then_obtain_info(param)
-    statistics_log(param.get('temp_file_path') + param.get('group'), git_projects)
+    statistics_log(param.get('temp_file_path') + param.get('group'), git_projects, param.get('author'))
+
