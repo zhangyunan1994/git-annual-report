@@ -110,7 +110,7 @@ def statistics_log(temp_path, git_projects, author):
     all_project_commits = []
     for project in git_projects:
         commits = extract_commits(project.name, project.commit_path, author)
-        project.word_cloud_path = generate_word_cloud(project.name, [x.message for x in commits], temp_path)
+        # project.word_cloud_path = generate_word_cloud(project.name, [x.message for x in commits], temp_path)
         # 统计每个用户的提交
         contributor = {}
         for commit in commits:
@@ -126,7 +126,11 @@ def statistics_log(temp_path, git_projects, author):
             no_commit_project.append(project.name)
 
     print(f'你一共参与了 {len(git_projects)} 个项目')
-    print(f'其中在 {len(no_commit_project)} 个项目中默默无闻，你是在偷偷学习吗')
+    if len(no_commit_project) > 0:
+        if len(no_commit_project) > 3:
+            print(f'其中在 {no_commit_project[:2]} 等 {len(no_commit_project)} 个项目中{random.choice(leisure_contributor)}, 你是在偷偷学习吗, 还是害羞的不好意思提交? ')
+        else:
+            print(f'其中在 {no_commit_project} 等 {len(no_commit_project)} 个项目中{random.choice(leisure_contributor)}, 你是在偷偷学习吗, 还是害羞的不好意思提交? ')
 
     # 在所有分支中找到自己的提交记录
     all_project_self_commits = list(filter(lambda x: x.author == self_author, all_project_commits))
@@ -150,8 +154,11 @@ def statistics_log(temp_path, git_projects, author):
     # 获取码率最高的星期
     week_commit_count = [0, 0, 0, 0, 0, 0, 0]
     weekend = ('一', '二', '三', '四', '五', '六', '日')
+    weekend_code = []
     for commit in all_project_self_commits:
         week_commit_count[commit.date.weekday()] = week_commit_count[commit.date.weekday()] + 1
+        if commit.date.weekday() > 4:
+            weekend_code.append(commit.date.strftime("%Y-%m-%d"))
 
     # 查询最大值的index
     index = -1
@@ -161,6 +168,8 @@ def statistics_log(temp_path, git_projects, author):
             count = c
             index = i
     print(f'你在周{weekend[index]}的码率最高')
+
+    print(f'全年你有 {len(set(weekend_code))} 个非工作日再提交代码，是不是在改bug呀！ 不要太拼哦，偶尔也要做个头发')
     print('\n' * 4)
 
     for project_name, contributor in project_contributor.items():
