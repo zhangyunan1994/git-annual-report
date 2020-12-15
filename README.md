@@ -19,7 +19,15 @@ git 项目代码分析
 1. clone 项目到本地
 1. 根据 requirements.txt 安装必要依赖
 1. 修改 word_tags.py 中字体文件路径
+1. 在目录下新增 abc.csv 文件，文件内容为 项目名,项目git地址
 1. 打开 `git_annual_report.py` 文件运行即可
+
+**abc.csv示例**
+
+```csv
+git-annual-report,https://github.com/zhangyunan1994/git-annual-report.git
+kola,https://github.com/zhangyunan1994/kola.git
+```
 
 参数介绍
 ```python
