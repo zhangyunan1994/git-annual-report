@@ -33,8 +33,9 @@ def clone_git_project_then_obtain_info(param):
             subprocess.call(f"git clone {git_project.get('url')} {extract_git_project.git_path}", shell=True)
         extract_git_project.commit_path = git_log_path + '/' + git_project.get('name')
         if not os.path.exists(extract_git_project.commit_path):
+            print(f"""cd {extract_git_project.git_path} && git log --date=format:'%Y-%m-%d %H:%M:%S' --pretty=format:"%an|%ad|%S|%s" --all --shortstat > {extract_git_project.commit_path}""")
             subprocess.call(
-                f"""cd {extract_git_project.git_path} && git log --date=format:'%Y-%m-%d %H:%M:%S' --pretty=format:"%an|%ad|%S|%s" --all --shortstat > {extract_git_project.commit_path}""",
+                f"""cd {extract_git_project.git_path} && git log --date=format:"%Y-%m-%d %H:%M:%S" --pretty=format:"%an|%ad|%S|%s" --all --shortstat > {extract_git_project.commit_path}""",
                 shell=True)
         result.append(extract_git_project)
     return result
@@ -109,6 +110,7 @@ def statistics_log(temp_path, git_projects, author):
     no_commit_project = []
     all_project_commits = []
     for project in git_projects:
+        print(f"开始成功图 {project.name}")
         commits = extract_commits(project.name, project.commit_path, author)
         project.word_cloud_path = generate_word_cloud(project.name, [x.message for x in commits], temp_path)
         # 统计每个用户的提交
